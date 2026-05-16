@@ -121,7 +121,7 @@ def build_notebook() -> dict:
             from hazematching.datasets import HazeDataset
             from hazematching.datasets.data_norm import denormalize, normalize
             from hazematching.ra_psnr import RangeInvariantPsnr
-            from hazematching.utils import extract_patches_inner, reconstruct_image_inner
+            from hazematching.utils import FSIM, GMSD, extract_patches_inner, lpips, reconstruct_image_inner
 
             DATA_DIR = REPO_ROOT / "data"
             CHECKPOINT_DIR = REPO_ROOT / "checkpoints"
@@ -629,7 +629,11 @@ def build_notebook() -> dict:
 
             - **Range-Invariant PSNR**: a reconstruction quality score,
             - **MS-SSIM**: a structural similarity score,
-            - **MicroMS3IM**: a microscopy-focused perceptual similarity score.
+            - **MicroMS3IM**: a microscopy-focused perceptual similarity score,
+            - **LPIPS**, **FSIM**, and **GMSD**: perceptual and gradient-based image quality scores.
+
+            We skip FID here because it needs a separate reference distribution, which is heavier than we want for this walkthrough.
+            The helper defined below is also reused later to annotate the displayed MMSE image and posterior samples.
 
             Because we only infer on a few images here, these numbers are best understood as a demonstration rather than a final benchmark.
             """
@@ -644,34 +648,79 @@ def build_notebook() -> dict:
                 return (image - image.min()) / span
 
 
-            def compute_quick_metrics(results: dict[str, list[dict]]):
-                rows = []
-                target_bank = []
-                pred_bank = []
-                ms_ssim_metric = MultiScaleStructuralSimilarityIndexMeasure(
+            def to_channel_first(image: np.ndarray) -> np.ndarray:
+                image = np.asarray(image, dtype=np.float32)
+                if image.ndim == 2:
+                    return image[None, :, :]
+                if image.ndim == 3 and image.shape[0] == 1:
+                    return image
+                raise ValueError(f"Expected a 2D image or a single-channel CxHxW image, got {image.shape}.")
+
+
+            def as_float(value) -> float:
+                if isinstance(value, torch.Tensor):
+                    return float(value.detach().cpu().mean().item())
+                return float(value)
+
+
+            def new_ms_ssim_metric():
+                return MultiScaleStructuralSimilarityIndexMeasure(
                     kernel_size=3,
                     data_range=1.0,
                     betas=(0.0448, 0.2856, 0.3001),
                 )
 
+
+            def compute_prediction_metrics(
+                target_image: np.ndarray,
+                pred_image: np.ndarray,
+                *,
+                ms_ssim_metric=None,
+                micros: MicroMS3IM | None = None,
+            ) -> dict[str, float]:
+                target = to_channel_first(target_image)
+                pred = to_channel_first(pred_image)
+
+                target_tensor = torch.from_numpy(to_unit_interval(target)[None, :, :, :])
+                pred_tensor = torch.from_numpy(to_unit_interval(pred)[None, :, :, :])
+                if ms_ssim_metric is None:
+                    ms_ssim_metric = new_ms_ssim_metric()
+
+                metrics = {
+                    "psnr": float(RangeInvariantPsnr(target, pred)),
+                    "ms_ssim": as_float(ms_ssim_metric(pred_tensor, target_tensor)),
+                    "lpips": float(lpips(target_tensor, pred_tensor)),
+                    "fsim": as_float(FSIM(pred_tensor, target_tensor)),
+                    "gmsd": as_float(GMSD(pred_tensor, target_tensor)),
+                }
+
+                if micros is not None:
+                    metrics["micro_ms3im"] = float(
+                        micros.score(
+                            target[0],
+                            pred[0],
+                            betas=(0.0448, 0.2856, 0.3001),
+                        )
+                    )
+
+                return metrics
+
+
+            def format_metric_block(metrics: dict[str, float]) -> str:
+                return (
+                    f"PSNR={metrics['psnr']:.2f} | MS-SSIM={metrics['ms_ssim']:.3f}\\n"
+                    f"MicroMS3IM={metrics['micro_ms3im']:.3f} | LPIPS={metrics['lpips']:.3f}\\n"
+                    f"FSIM={metrics['fsim']:.3f} | GMSD={metrics['gmsd']:.3f}"
+                )
+
+
+            def compute_quick_metrics(results: dict[str, list[dict]]):
+                rows = []
+                target_bank = []
+                pred_bank = []
+
                 for split, items in results.items():
                     for item in items:
-                        target = item["target_raw"][None, :, :]
-                        pred = item["mmse_raw"][None, :, :]
-
-                        psnr_value = float(RangeInvariantPsnr(target, pred))
-                        target_tensor = torch.from_numpy(to_unit_interval(target)[None, :, :, :])
-                        pred_tensor = torch.from_numpy(to_unit_interval(pred)[None, :, :, :])
-                        ms_ssim_value = float(ms_ssim_metric(pred_tensor, target_tensor))
-
-                        rows.append(
-                            {
-                                "split": split,
-                                "image_name": item["image_name"],
-                                "psnr": psnr_value,
-                                "ms_ssim": ms_ssim_value,
-                            }
-                        )
                         target_bank.append(item["target_raw"])
                         pred_bank.append(item["mmse_raw"])
 
@@ -680,26 +729,42 @@ def build_notebook() -> dict:
 
                 micros = MicroMS3IM()
                 micros.fit(target_bank, pred_bank)
-                for row, gt_image, pred_image in zip(rows, gt_bank, pred_bank):
-                    row["micro_ms3im"] = float(
-                        micros.score(
-                            gt_image,
-                            pred_image,
-                            betas=(0.0448, 0.2856, 0.3001),
+                ms_ssim_metric = new_ms_ssim_metric()
+
+                for split, items in results.items():
+                    for item in items:
+                        metrics = compute_prediction_metrics(
+                            item["target_raw"],
+                            item["mmse_raw"],
+                            ms_ssim_metric=ms_ssim_metric,
+                            micros=micros,
                         )
-                    )
+                        rows.append(
+                            {
+                                "split": split,
+                                "image_name": item["image_name"],
+                                **metrics,
+                            }
+                        )
 
-                return rows
+                return rows, micros
 
 
-            quick_metric_rows = compute_quick_metrics(posterior_results)
+            quick_metric_rows, quick_metric_micros = compute_quick_metrics(posterior_results)
+            quick_metric_by_image = {
+                (row["split"], row["image_name"]): row
+                for row in quick_metric_rows
+            }
 
             for row in quick_metric_rows:
                 print(
                     f"{row['split']:>4} | {row['image_name']} | "
                     f"PSNR={row['psnr']:.3f} | "
                     f"MS-SSIM={row['ms_ssim']:.3f} | "
-                    f"MicroMS3IM={row['micro_ms3im']:.3f}"
+                    f"MicroMS3IM={row['micro_ms3im']:.3f} | "
+                    f"LPIPS={row['lpips']:.3f} | "
+                    f"FSIM={row['fsim']:.3f} | "
+                    f"GMSD={row['gmsd']:.3f}"
                 )
 
             print("\\nMean values by split")
@@ -709,7 +774,10 @@ def build_notebook() -> dict:
                     f"{split:>4} | "
                     f"PSNR={np.mean([row['psnr'] for row in split_rows]):.3f} | "
                     f"MS-SSIM={np.mean([row['ms_ssim'] for row in split_rows]):.3f} | "
-                    f"MicroMS3IM={np.mean([row['micro_ms3im'] for row in split_rows]):.3f}"
+                    f"MicroMS3IM={np.mean([row['micro_ms3im'] for row in split_rows]):.3f} | "
+                    f"LPIPS={np.mean([row['lpips'] for row in split_rows]):.3f} | "
+                    f"FSIM={np.mean([row['fsim'] for row in split_rows]):.3f} | "
+                    f"GMSD={np.mean([row['gmsd'] for row in split_rows]):.3f}"
                 )
             """
         ),
@@ -804,25 +872,53 @@ def build_notebook() -> dict:
             POSTERIOR_SAMPLE_B = 1
 
             example = posterior_results[EXAMPLE_SPLIT][EXAMPLE_INDEX]
+            example_ms_ssim_metric = new_ms_ssim_metric()
+            posterior_a = example["posterior_raw"][POSTERIOR_SAMPLE_A, -1]
+            posterior_b = example["posterior_raw"][POSTERIOR_SAMPLE_B, -1]
+            mmse_metrics = quick_metric_by_image[(EXAMPLE_SPLIT, example["image_name"])]
+            posterior_a_metrics = compute_prediction_metrics(
+                example["target_raw"],
+                posterior_a,
+                ms_ssim_metric=example_ms_ssim_metric,
+                micros=quick_metric_micros,
+            )
+            posterior_b_metrics = compute_prediction_metrics(
+                example["target_raw"],
+                posterior_b,
+                ms_ssim_metric=example_ms_ssim_metric,
+                micros=quick_metric_micros,
+            )
+
             vmin = min(example["target_raw"].min(), example["mmse_raw"].min())
             vmax = max(example["target_raw"].max(), example["mmse_raw"].max())
 
             panels = [
-                ("Widefield input", example["input_raw"]),
-                ("Confocal target", example["target_raw"]),
-                ("MMSE", example["mmse_raw"]),
-                (f"Posterior {POSTERIOR_SAMPLE_A + 1}", example["posterior_raw"][POSTERIOR_SAMPLE_A, -1]),
-                (f"Posterior {POSTERIOR_SAMPLE_B + 1}", example["posterior_raw"][POSTERIOR_SAMPLE_B, -1]),
+                ("Widefield input", example["input_raw"], None),
+                ("Confocal target", example["target_raw"], None),
+                ("MMSE", example["mmse_raw"], mmse_metrics),
+                (f"Posterior {POSTERIOR_SAMPLE_A + 1}", posterior_a, posterior_a_metrics),
+                (f"Posterior {POSTERIOR_SAMPLE_B + 1}", posterior_b, posterior_b_metrics),
             ]
 
-            fig, axes = plt.subplots(1, len(panels), figsize=(20, 4))
-            for ax, (title, image) in zip(axes, panels):
+            fig, axes = plt.subplots(1, len(panels), figsize=(22, 5.8))
+            for ax, (title, image, metrics) in zip(axes, panels):
                 ax.imshow(image, cmap="magma", vmin=vmin, vmax=vmax)
                 ax.set_title(title)
                 ax.axis("off")
+                if metrics is not None:
+                    ax.text(
+                        0.5,
+                        -0.08,
+                        format_metric_block(metrics),
+                        transform=ax.transAxes,
+                        ha="center",
+                        va="top",
+                        fontsize=8,
+                        clip_on=False,
+                    )
 
-            plt.suptitle(f"{EXAMPLE_SPLIT} example: {example['image_name']}", y=1.02)
-            plt.tight_layout()
+            fig.suptitle(f"{EXAMPLE_SPLIT} example: {example['image_name']}", y=0.98)
+            fig.subplots_adjust(left=0.01, right=0.99, top=0.82, bottom=0.28, wspace=0.05)
             plt.show()
             """
         ),
