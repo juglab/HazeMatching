@@ -41,7 +41,7 @@ def compute_metrics(
     fid_dir: Annotated[
         Optional[Path],
         typer.Option(
-            help="Directory of FID reference crops. Defaults to <data_dir>/<subset>/train_crops_fid_filtered/."
+            help="Directory of FID reference crops. Defaults to <data_dir>/<subset>/train_crops_fid/."
         ),
     ] = None,
     data_dir: Annotated[
@@ -61,7 +61,7 @@ def compute_metrics(
     if results_dir is None:
         results_dir = subset_dir / "test_results"
     if fid_dir is None:
-        fid_dir = subset_dir / "train_crops_fid_filtered"
+        fid_dir = subset_dir / "train_crops_fid"
 
     micros_ms3im = MicroMS3IM()
 
