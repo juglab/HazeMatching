@@ -46,8 +46,11 @@ def _load_split(
             image = tif.asarray()
         samples = image[:n_samples, -1]  # (n_samples, H, W) — last ODE step
 
-        # Confocal target: channel 0 of the original tif, normalized.
         raw_path = data_path / result_file.name
+        if subset != "neuron":
+            samples = normalize(samples, subset, channel=0, path=raw_path)
+
+        # Confocal target: channel 0 of the original tif, in normalized space.
         raw = imread(raw_path).astype("float32")
         target_image = normalize(raw[0:1], subset, channel=0, path=raw_path).squeeze(0)
 
