@@ -1,0 +1,28 @@
+[project]
+name = "hazematching"
+version = "0.1.0"
+description = "HazeMatching: Noise-Resilient Computational Super-Resolution via Guided Conditional Flow Matching"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.0",
+    "torchvision",
+    "torchdiffeq",
+    "torchdyn",
+    "torchmetrics[image]",
+    "tifffile",
+    "numpy",
+    "matplotlib",
+    "tqdm",
+    "wandb",
+    "pyiqa",
+    "microssim",
+    "POT",
+    "scipy",
+    "torchcfm",
+    "pooch",
+    "typer",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
