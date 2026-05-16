@@ -158,10 +158,6 @@ If you use this work, please cite:
 }
 ```
 
-## Notes
-
-The previous subset names have been replaced throughout the repo. The normalization table in [hazematching/datasets/data_norm.py](hazematching/datasets/data_norm.py) currently contains identity defaults for the HazeMatching datasets; replace those values with measured per-channel means and standard deviations when final training data statistics are available.
-
 ## Acknowledgements
 
 We thank Francesca Casagrande, Alessandra Fasciani, Jacopo Zasso, Ilaria Laface, Dario Ricca, and Eugenia Cammarota for their valuable contributions to this work. We also acknowledge the support of [Talley Lambert](https://talleylambert.com/) at Harvard Medical School and Vera Galinova in setting up the [microsim](https://talleylambert.com/microsim/) pipeline and some baselines, as well as the entire [Jug Group](https://humantechnopole.it/en/research-groups/jug-group/) for insightful discussions.
