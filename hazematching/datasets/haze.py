@@ -10,12 +10,13 @@ from .data_norm import normalize
 
 
 class HazeDataset(data.Dataset):
-    """HazeMatching dataset for paired low-res / high-res fluorescence microscopy images.
+    """HazeMatching dataset for paired widefield / confocal microscopy images.
 
     Args:
         subset: One of the HazeMatching dataset keys.
         folder: Directory containing image crops.
-        returns: Channel indices to include in each sample, e.g. ``[0, 1]``.
+        returns: Channel indices to include in each sample, e.g. ``[0, 1]``
+            for confocal target and widefield input.
     """
 
     def __init__(

@@ -101,9 +101,9 @@ def infer(
                     MICROTUBULE_CENTER_CROP,
                     MICROTUBULE_CENTER_CROP,
                 ]
-            noisy_norm = normalize(raw[1:2], subset, channel=1, path=img_path)
+            widefield_norm = normalize(raw[1:2], subset, channel=1, path=img_path)
             patches, coords = extract_patches_inner(
-                noisy_norm, patch_size=patch_size, crop_size=crop_size
+                widefield_norm, patch_size=patch_size, crop_size=crop_size
             )
             condition = torch.from_numpy(patches).to(device)
 
@@ -145,7 +145,7 @@ def infer(
             full = reconstruct_image_inner(
                 samples,
                 coords,
-                noisy_norm.shape,
+                widefield_norm.shape,
                 patch_size=patch_size,
                 crop_size=crop_size,
             )

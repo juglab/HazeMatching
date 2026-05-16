@@ -30,7 +30,7 @@ def _load_split(
     n_samples: int,
     device: torch.device,
 ):
-    """Load predictions and GT for one split (val or test).
+    """Load predictions and confocal targets for one split (val or test).
 
     Returns pred (N, H, W, 1), std (N, H, W, 1), target (N, H, W, 1).
     """
@@ -46,10 +46,10 @@ def _load_split(
             image = tif.asarray()
         samples = image[:n_samples, -1]  # (n_samples, H, W) — last ODE step
 
-        # GT: channel 0 of the original tif, normalized
+        # Confocal target: channel 0 of the original tif, normalized.
         raw_path = data_path / result_file.name
         raw = imread(raw_path).astype("float32")
-        gt = normalize(raw[0:1], subset, channel=0, path=raw_path).squeeze(0)
+        target_image = normalize(raw[0:1], subset, channel=0, path=raw_path).squeeze(0)
 
         mmse = np.mean(samples, axis=0, keepdims=True)  # (1, H, W)
 
@@ -58,7 +58,7 @@ def _load_split(
 
         pred_list.append(mmse)
         std_list.append(std)
-        target_list.append(gt[np.newaxis])  # (1, H, W)
+        target_list.append(target_image[np.newaxis])  # (1, H, W)
 
     # Stack and add channel dim for Calibration (expects shape N, H, W, C)
     pred = np.concatenate(pred_list, axis=0)[..., np.newaxis]

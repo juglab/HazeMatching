@@ -43,7 +43,7 @@ def build_notebook() -> dict:
             1. Look at the microscopy data and understand what the model sees.
             2. Run a **tiny training demo** for only 2 to 3 epochs, just to watch the loss change.
             3. Load a **pre-trained model** and run inference on a small number of validation and test images.
-            4. Compute simple quality metrics, make a calibration plot, and visualize the input, ground truth, MMSE reconstruction, and posterior samples.
+            4. Compute simple quality metrics, make a calibration plot, and visualize the widefield input, confocal target, MMSE reconstruction, and posterior samples.
 
             This notebook is intentionally light.
             It is **not** meant to reproduce the full paper numbers.
@@ -58,8 +58,8 @@ def build_notebook() -> dict:
 
             A few important notes:
 
-            - In this repository's actual training and inference code, **channel 1 is used as the observed noisy / low-resolution input**.
-            - **Channel 0 is used as the clean / high-resolution target**.
+            - In this repository's actual training and inference code, **channel 1 is used as the widefield input**.
+            - **Channel 0 is used as the confocal target**.
             - That convention is what we follow in this notebook, even if some older comments in the code suggest the opposite.
 
             Throughout the notebook, we also include a few teaching figures from `notebooks/figures/`.
@@ -228,7 +228,7 @@ def build_notebook() -> dict:
             - it loads one **training crop**, which is the small patch used during optimization,
             - and it loads one **full test image**, which is the larger image used for inference.
 
-            We show the observed noisy input and the clean target side by side.
+            We show the widefield input and the confocal target side by side.
             This is often the most useful first picture for collaborators who are new to the project.
             """
         ),
@@ -244,14 +244,14 @@ def build_notebook() -> dict:
             fig, axes = plt.subplots(2, 2, figsize=(10, 9))
 
             axes[0, 0].imshow(train_example[1], cmap="magma")
-            axes[0, 0].set_title("Training crop: observed noisy input")
+            axes[0, 0].set_title("Training crop: widefield input")
             axes[0, 1].imshow(train_example[0], cmap="magma")
-            axes[0, 1].set_title("Training crop: clean target")
+            axes[0, 1].set_title("Training crop: confocal target")
 
             axes[1, 0].imshow(full_example[1], cmap="magma")
-            axes[1, 0].set_title(f"Full image input: {first_test_file.name}")
+            axes[1, 0].set_title(f"Full image widefield input: {first_test_file.name}")
             axes[1, 1].imshow(full_example[0], cmap="magma")
-            axes[1, 1].set_title("Full image target")
+            axes[1, 1].set_title("Full image confocal target")
 
             for ax in axes.ravel():
                 ax.axis("off")
@@ -458,7 +458,7 @@ def build_notebook() -> dict:
             ### Visual Intuition: Iterative Inference
 
             In inference, the model does not jump directly from noise to the final prediction.
-            Instead, it takes many small steps, gradually refining the reconstruction while being guided by the observed input image.
+            Instead, it takes many small steps, gradually refining the reconstruction while being guided by the widefield input image.
 
             ![Iterative inference overview](figures/iterative_inference.png)
             """
@@ -486,13 +486,13 @@ def build_notebook() -> dict:
                 crop_size: int = CROP_SIZE,
                 max_patch_batch: int = MAX_PATCH_BATCH,
             ) -> dict:
-                noisy_raw = raw_image[1:2].astype(np.float32)
+                widefield_raw = raw_image[1:2].astype(np.float32)
                 target_raw = raw_image[0:1].astype(np.float32)
-                noisy_norm = normalize(noisy_raw, subset, channel=1, path=image_path)
+                widefield_norm = normalize(widefield_raw, subset, channel=1, path=image_path)
                 target_norm = normalize(target_raw, subset, channel=0, path=image_path)
 
                 patches, coords = extract_patches_inner(
-                    noisy_norm,
+                    widefield_norm,
                     patch_size=patch_size,
                     crop_size=crop_size,
                 )
@@ -524,7 +524,7 @@ def build_notebook() -> dict:
                 posterior_full = reconstruct_image_inner(
                     posterior_trajectories,
                     coords,
-                    noisy_norm.shape,
+                    widefield_norm.shape,
                     patch_size=patch_size,
                     crop_size=crop_size,
                 )
@@ -542,10 +542,10 @@ def build_notebook() -> dict:
                 std_norm = posterior_norm[:, -1].std(axis=0)
 
                 return {
-                    "input_raw": noisy_raw[0],
-                    "gt_raw": target_raw[0],
-                    "input_norm": noisy_norm[0],
-                    "gt_norm": target_norm[0],
+                    "input_raw": widefield_raw[0],
+                    "target_raw": target_raw[0],
+                    "input_norm": widefield_norm[0],
+                    "target_norm": target_norm[0],
                     "posterior_norm": posterior_norm,
                     "posterior_raw": posterior_raw,
                     "mmse_norm": mmse_norm,
@@ -646,7 +646,7 @@ def build_notebook() -> dict:
 
             def compute_quick_metrics(results: dict[str, list[dict]]):
                 rows = []
-                gt_bank = []
+                target_bank = []
                 pred_bank = []
                 ms_ssim_metric = MultiScaleStructuralSimilarityIndexMeasure(
                     kernel_size=3,
@@ -656,13 +656,13 @@ def build_notebook() -> dict:
 
                 for split, items in results.items():
                     for item in items:
-                        gt = item["gt_raw"][None, :, :]
+                        target = item["target_raw"][None, :, :]
                         pred = item["mmse_raw"][None, :, :]
 
-                        psnr_value = float(RangeInvariantPsnr(gt, pred))
-                        gt_tensor = torch.from_numpy(to_unit_interval(gt)[None, :, :, :])
+                        psnr_value = float(RangeInvariantPsnr(target, pred))
+                        target_tensor = torch.from_numpy(to_unit_interval(target)[None, :, :, :])
                         pred_tensor = torch.from_numpy(to_unit_interval(pred)[None, :, :, :])
-                        ms_ssim_value = float(ms_ssim_metric(pred_tensor, gt_tensor))
+                        ms_ssim_value = float(ms_ssim_metric(pred_tensor, target_tensor))
 
                         rows.append(
                             {
@@ -672,14 +672,14 @@ def build_notebook() -> dict:
                                 "ms_ssim": ms_ssim_value,
                             }
                         )
-                        gt_bank.append(item["gt_raw"])
+                        target_bank.append(item["target_raw"])
                         pred_bank.append(item["mmse_raw"])
 
-                gt_bank = np.stack(gt_bank, axis=0)
+                target_bank = np.stack(target_bank, axis=0)
                 pred_bank = np.stack(pred_bank, axis=0)
 
                 micros = MicroMS3IM()
-                micros.fit(gt_bank, pred_bank)
+                micros.fit(target_bank, pred_bank)
                 for row, gt_image, pred_image in zip(rows, gt_bank, pred_bank):
                     row["micro_ms3im"] = float(
                         micros.score(
@@ -745,7 +745,7 @@ def build_notebook() -> dict:
             def stack_for_calibration(items: list[dict]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
                 pred = np.stack([item["mmse_norm"] for item in items], axis=0)[..., np.newaxis]
                 std = np.stack([item["std_norm"] for item in items], axis=0)[..., np.newaxis]
-                target = np.stack([item["gt_norm"] for item in items], axis=0)[..., np.newaxis]
+                target = np.stack([item["target_norm"] for item in items], axis=0)[..., np.newaxis]
                 return pred, std, target
 
 
@@ -788,8 +788,8 @@ def build_notebook() -> dict:
 
             It shows:
 
-            - the noisy input image,
-            - the ground-truth target,
+            - the widefield input image,
+            - the confocal target,
             - the MMSE reconstruction,
             - and two posterior samples.
 
@@ -804,12 +804,12 @@ def build_notebook() -> dict:
             POSTERIOR_SAMPLE_B = 1
 
             example = posterior_results[EXAMPLE_SPLIT][EXAMPLE_INDEX]
-            vmin = min(example["gt_raw"].min(), example["mmse_raw"].min())
-            vmax = max(example["gt_raw"].max(), example["mmse_raw"].max())
+            vmin = min(example["target_raw"].min(), example["mmse_raw"].min())
+            vmax = max(example["target_raw"].max(), example["mmse_raw"].max())
 
             panels = [
-                ("Input image", example["input_raw"]),
-                ("Ground truth", example["gt_raw"]),
+                ("Widefield input", example["input_raw"]),
+                ("Confocal target", example["target_raw"]),
                 ("MMSE", example["mmse_raw"]),
                 (f"Posterior {POSTERIOR_SAMPLE_A + 1}", example["posterior_raw"][POSTERIOR_SAMPLE_A, -1]),
                 (f"Posterior {POSTERIOR_SAMPLE_B + 1}", example["posterior_raw"][POSTERIOR_SAMPLE_B, -1]),

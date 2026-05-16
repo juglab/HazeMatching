@@ -1,7 +1,7 @@
 """Per-dataset, per-channel normalisation statistics for HazeMatching.
 
 Each entry maps a dataset key to ([mean_ch0, mean_ch1], [std_ch0, std_ch1]).
-Channel 0 = high-res target; channel 1 = observed low-res/noisy input.
+Channel 0 = confocal target; channel 1 = widefield input.
 Zebrafish uses filename-derived source channels (ch0/ch1/ch2).
 """
 

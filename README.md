@@ -1,6 +1,6 @@
 # HazeMatching
 
-**A fast and effective posterior sampling framework for microscopy image dehazing and noise-resilient computational super-resolution.**
+**A fast and effective posterior sampling framework for reconstructing confocal targets from widefield microscopy inputs.**
 
 HazeMatching uses guided conditional flow matching to generate multiple plausible microscopy reconstructions instead of a single deterministic output. This enables high-quality restoration together with uncertainty estimates for downstream analysis.
 
@@ -30,14 +30,14 @@ uv sync
 
 ## Example Notebook
 
-Start with [notebooks/hazematching_walkthrough.ipynb](notebooks/hazematching_walkthrough.ipynb) for a hands-on walkthrough of the full workflow: a small training demo, checkpoint inference, lightweight metrics, calibration, and visualization of input / ground truth / MMSE / posterior samples.
+Start with [notebooks/hazematching_walkthrough.ipynb](notebooks/hazematching_walkthrough.ipynb) for a hands-on walkthrough of the full workflow: a small training demo, checkpoint inference, lightweight metrics, calibration, and visualization of widefield input / confocal target / MMSE / posterior samples.
 
 ## Datasets
 
 HazeMatching expects paired TIFF files where:
 
-- channel 0 is the high-resolution target
-- channel 1 is the observed low-resolution or noisy input
+- channel 0 is the confocal target
+- channel 1 is the widefield input
 
 Supported dataset keys:
 
