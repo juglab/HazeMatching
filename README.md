@@ -1,6 +1,14 @@
+
 # HazeMatching
 
 **A fast and effective posterior sampling framework for reconstructing confocal targets from widefield microscopy inputs.**
+
+<p align="center">
+  <a href="assets/CVPR_poster.pdf">
+    <img src="assets/CVPR_poster.png" alt="CVPR poster for HazeMatching" width="60%">
+  </a>
+</p>
+
 
 HazeMatching uses guided conditional flow matching to generate multiple plausible microscopy reconstructions instead of a single deterministic output. This enables high-quality restoration together with uncertainty estimates for downstream analysis.
 
